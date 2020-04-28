@@ -76,13 +76,28 @@ def lf_ball_at_bottom(frame_boxes):
     balls = [b for b in boxes if b[5] == BALL_CLASS]
     for person in persons:
         for ball in balls:
-            intersection = box_intersection(person, ball)
-            if intersection >= 0:
-                person_height = person[3] - person[1]
-                ball_center_y = (ball[3] + ball[1]) / 2
-                if abs(person[3] - ball_center_y) <= person_height / 4:
-                    # print(f'ball={ball[3]}, person={person[1]},{person[3]}')
-                    return ACTION
+            person_height = person[3] - person[1]
+            ball_center_y = (ball[3] + ball[1]) / 2
+            if abs(person[3] - ball_center_y) <= person_height / 8:
+                # print(f'ball={ball[3]}, person={person[1]},{person[3]}')
+                return ACTION
+    return ABSTAIN
+
+
+@labeling.labeling_function()
+def lf_ball_left_right_position(frame_boxes):
+    frame, boxes = frame_boxes
+    persons = [b for b in boxes if b[5] == PERSON_CLASS]
+    balls = [b for b in boxes if b[5] == BALL_CLASS]
+    for person in persons:
+        for ball in balls:
+            person_width = person[2] - person[0]
+            ball_center_x = (ball[2] + ball[0]) / 2
+            if abs(person[0] - ball_center_x) < person_width / 8:
+                return ACTION
+            if abs(person[2] - ball_center_x) < person_width / 8:
+                return ACTION
+
     return ABSTAIN
 
 
@@ -99,11 +114,12 @@ def main():
         all_boxes = pickle.load(f)
 
     lfs = [
-        lf_contains_ball,
+        # lf_contains_ball,
         # lf_contains_person,
-        lf_contains_person_ball,
+        # lf_contains_person_ball,
         lf_ball_person_intersects,
-        lf_ball_at_bottom
+        lf_ball_at_bottom,
+        lf_ball_left_right_position
     ]
 
     applier = labeling.LFApplier(lfs=lfs)
@@ -112,25 +128,20 @@ def main():
     summary = labeling.LFAnalysis(L=L_train, lfs=lfs).lf_summary()
     print(summary)
 
-    majority_model = baselines.MajorityLabelVoter()
-    preds_train = majority_model.predict(L=L_train)
+    lm = label_model.LabelModel(cardinality=2, verbose=True)
+    lm.fit(L_train=L_train, n_epochs=500, log_freq=100)
 
-    preds = []
+    # lm.save('label_model.pkl')
+    preds, probs = lm.predict(L_train, return_probs=True)
+    preds_frames = []
     for i, (frame, _) in enumerate(all_boxes):
-        preds.append((frame, preds_train[i]))
+        preds_frames.append((frame, preds[i], probs[i]))
 
     name = 'preds.pkl'
     with open(name, 'wb') as f:
-        pickle.dump(preds, f)
+        pickle.dump(preds_frames, f)
 
     print(f'Saved to {name}.')
-    # lm = label_model.LabelModel(cardinality=2, verbose=True)
-    # lm.fit(L_train=L_train, n_epochs=500, log_freq=100, seed=123)
-    # majority_acc = majority_model.score(L=L_test, Y=Y_test, tie_break_policy="random")["accuracy"]
-    # print(f"{'Majority Vote Accuracy:':<25} {majority_acc * 100:.1f}%")
-
-    # label_model_acc = lm.score(L=L_test, Y=Y_test, tie_break_policy="random")["accuracy"]
-    # print(f"{'Label Model Accuracy:':<25} {label_model_acc * 100:.1f}%")
 
 
 if __name__ == '__main__':

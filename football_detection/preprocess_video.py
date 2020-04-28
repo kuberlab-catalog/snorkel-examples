@@ -1,4 +1,5 @@
 import argparse
+import logging
 import pickle
 
 import cv2
@@ -19,6 +20,11 @@ def parse_args():
 
 
 def main():
+    logging.basicConfig(
+        format='%(asctime)s %(levelname)-5s %(name)-10s [-] %(message)s',
+        level='INFO'
+    )
+    logging.root.setLevel(logging.INFO)
     args = parse_args()
     obj_det = driver.load_driver('auto')().load_model(args.detection)
 

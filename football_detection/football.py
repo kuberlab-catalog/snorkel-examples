@@ -2,6 +2,7 @@ import argparse
 import pickle
 
 import cv2
+import numpy as np
 from snorkel import labeling
 from snorkel.labeling.model import baselines
 from snorkel.labeling.model import label_model
@@ -9,8 +10,10 @@ from snorkel.labeling.model import label_model
 from football_detection import detection
 
 
-ACTION = 0
 ABSTAIN = -1
+NOT_ACTION = 0
+ACTION = 1
+
 
 PERSON_CLASS = 1
 BALL_CLASS = 37
@@ -38,14 +41,14 @@ def box_intersection(box_a, box_b):
 def lf_contains_ball(frame_boxes):
     frame, boxes = frame_boxes
     any_ball = any([b[5] == BALL_CLASS for b in boxes])
-    return ACTION if any_ball else ABSTAIN
+    return ACTION if any_ball else NOT_ACTION
 
 
 @labeling.labeling_function()
 def lf_contains_person(frame_boxes):
     frame, boxes = frame_boxes
     any_person = any([b[5] == PERSON_CLASS for b in boxes])
-    return ACTION if any_person else ABSTAIN
+    return ACTION if any_person else NOT_ACTION
 
 
 @labeling.labeling_function()
@@ -53,7 +56,7 @@ def lf_contains_person_ball(frame_boxes):
     frame, boxes = frame_boxes
     any_person = any([b[5] == PERSON_CLASS for b in boxes])
     any_ball = any([b[5] == BALL_CLASS for b in boxes])
-    return ACTION if any_person and any_ball else ABSTAIN
+    return ACTION if any_person and any_ball else NOT_ACTION
 
 
 @labeling.labeling_function()
@@ -66,7 +69,7 @@ def lf_ball_person_intersects(frame_boxes):
             intersection = box_intersection(person, ball)
             if intersection >= 0.03:
                 return ACTION
-    return ABSTAIN
+    return NOT_ACTION
 
 
 @labeling.labeling_function()
@@ -81,7 +84,7 @@ def lf_ball_at_bottom(frame_boxes):
             if abs(person[3] - ball_center_y) <= person_height / 8:
                 # print(f'ball={ball[3]}, person={person[1]},{person[3]}')
                 return ACTION
-    return ABSTAIN
+    return NOT_ACTION
 
 
 @labeling.labeling_function()
@@ -98,12 +101,14 @@ def lf_ball_left_right_position(frame_boxes):
             if abs(person[2] - ball_center_x) < person_width / 8:
                 return ACTION
 
-    return ABSTAIN
+    return NOT_ACTION
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--index', required=True)
+    parser.add_argument('--val-data')
+    parser.add_argument('--val-labels')
 
     return parser.parse_args()
 
@@ -112,6 +117,17 @@ def main():
     args = parse_args()
     with open(args.index, 'rb') as f:
         all_boxes = pickle.load(f)
+
+    need_validate = args.val_data and args.val_labels
+    if need_validate:
+        with open(args.val_data, 'rb') as f:
+            val_boxes = pickle.load(f)
+        with open(args.val_labels, 'rb') as f:
+            val_labels_raw = pickle.load(f)
+            val_labels = []
+            for _, lbl in val_labels_raw:
+                val_labels.append(lbl)
+            val_labels = np.array(val_labels)
 
     lfs = [
         # lf_contains_ball,
@@ -124,6 +140,8 @@ def main():
 
     applier = labeling.LFApplier(lfs=lfs)
     L_train = applier.apply(all_boxes)
+    if need_validate:
+        L_test = applier.apply(val_boxes)
 
     summary = labeling.LFAnalysis(L=L_train, lfs=lfs).lf_summary()
     print(summary)
@@ -131,6 +149,27 @@ def main():
     lm = label_model.LabelModel(cardinality=2, verbose=True)
     lm.fit(L_train=L_train, n_epochs=500, log_freq=100)
 
+    if need_validate:
+        majority_model = baselines.MajorityLabelVoter()
+        majority_metrics = majority_model.score(
+            L=L_test, Y=val_labels,
+            tie_break_policy="random", metrics=['accuracy', 'f1', 'precision', 'recall']
+        )
+
+        print(f"{'Majority Vote Accuracy:':<25} {majority_metrics['accuracy'] * 100:.1f}%")
+        print(f"{'Majority Vote F1:':<25} {majority_metrics['f1'] * 100:.1f}%")
+        print(f"{'Majority Vote precision:':<25} {majority_metrics['precision'] * 100:.1f}%")
+        print(f"{'Majority Vote recall:':<25} {majority_metrics['recall'] * 100:.1f}%")
+
+        label_model_metrics = lm.score(
+            L=L_test, Y=val_labels,
+            tie_break_policy="random",
+            metrics=['accuracy', 'f1', 'precision', 'recall']
+        )
+        print(f"{'Label Model Accuracy:':<25} {label_model_metrics['accuracy'] * 100:.1f}%")
+        print(f"{'Label Model F1:':<25} {label_model_metrics['f1'] * 100:.1f}%")
+        print(f"{'Label Model Precision:':<25} {label_model_metrics['precision'] * 100:.1f}%")
+        print(f"{'Label Model Recall:':<25} {label_model_metrics['recall'] * 100:.1f}%")
     # lm.save('label_model.pkl')
     preds, probs = lm.predict(L_train, return_probs=True)
     preds_frames = []

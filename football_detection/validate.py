@@ -2,9 +2,6 @@ import argparse
 import pickle
 
 import cv2
-from ml_serving.drivers import driver
-
-from football_detection import detection
 
 
 def parse_args():
@@ -13,6 +10,7 @@ def parse_args():
     parser.add_argument('--video', required=True)
     parser.add_argument('--output')
     parser.add_argument('--index')
+    parser.add_argument('--mode', default='validate', choices=['validate', 'label'])
 
     return parser.parse_args()
 
@@ -42,9 +40,7 @@ def main():
             frameSize=(width, height)
         )
 
-    # if args.show:
-    #     cv2.namedWindow('Video')
-
+    gt_preds = [(0, 0) for i in range(len(preds))]
     while True:
         frame_count += 1
         ret, frame = vc.read()
@@ -88,15 +84,54 @@ def main():
                 )
 
         # cv2.imshow('Video', frame)
-        # key = cv2.waitKey(1)
-        # if key == 27:
-        #     break
+        if args.mode == 'label':
+            txt = "Press 'Space' to mark 'Action' or 'N' to mark 'None'"
+            (x_size, y_size), _ = cv2.getTextSize(txt, cv2.FONT_HERSHEY_SIMPLEX, 1.0, 1)
+            cv2.putText(
+                frame,
+                txt,
+                (frame.shape[1] // 2 - x_size // 2, int(frame.shape[0] * 0.9)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1.0, (0, 0, 0), thickness=2, lineType=cv2.LINE_AA
+            )
+            cv2.putText(
+                frame,
+                txt,
+                (frame.shape[1] // 2 - x_size // 2, int(frame.shape[0] * 0.9)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1.0, (250, 250, 250), thickness=1, lineType=cv2.LINE_AA
+            )
+            end = None
+            cv2.imshow('Video', frame)
+
+            # if not is_action:
+            #     gt_preds[preds_i] = (preds[preds_i][0], -1)
+            #     continue
+            while True:
+                key = cv2.waitKey(0)
+                if key in {ord('n'), ord('N')}:
+                    gt_preds[preds_i] = (preds[preds_i][0], -1)
+                    break
+                elif key == 32:
+                    gt_preds[preds_i] = (preds[preds_i][0], 0)
+                    break
+                elif key == 27:
+                    end = True
+                    break
+
+            if end:
+                break
 
         if args.output:
             video_writer.write(frame)
 
         if frame_count % 100 == 0:
             print(f'Processed {frame_count} frames.')
+
+    if args.mode == 'label':
+        with open('labels.pkl', 'wb') as f:
+            pickle.dump(gt_preds, f)
+        print(f'Labels are saved to labels.pkl.')
 
     if args.output:
         video_writer.release()

@@ -7,12 +7,10 @@ from snorkel import labeling
 from snorkel.labeling.model import baselines
 from snorkel.labeling.model import label_model
 
-from football_detection import detection
-
 
 ABSTAIN = -1
-NOT_ACTION = 0
-ACTION = 1
+NOT_ACTION = -1
+ACTION = 0
 
 
 PERSON_CLASS = 1
@@ -104,6 +102,25 @@ def lf_ball_left_right_position(frame_boxes):
     return NOT_ACTION
 
 
+@labeling.labeling_function()
+def lf_ball_in_kick_box(frame_boxes):
+    frame, boxes = frame_boxes
+    persons = [b for b in boxes if b[5] == PERSON_CLASS]
+    balls = [b for b in boxes if b[5] == BALL_CLASS]
+    for person in persons:
+        for ball in balls:
+            person_width = person[2] - person[0]
+            person_height = person[3] - person[1]
+            ball_center_x = (ball[2] + ball[0]) / 2
+            ball_center_y = (ball[3] + ball[1]) / 2
+            in_box_x = person[0] - person_width / 4 <= ball_center_x <= person[2] + person_width / 4
+            in_box_y = person[3] - person_height / 8 <= ball_center_y <= person[3] + person_height / 8
+            if in_box_x and in_box_y:
+                return ACTION
+
+    return NOT_ACTION
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--index', required=True)
@@ -135,7 +152,8 @@ def main():
         # lf_contains_person_ball,
         lf_ball_person_intersects,
         lf_ball_at_bottom,
-        lf_ball_left_right_position
+        lf_ball_left_right_position,
+        lf_ball_in_kick_box,
     ]
 
     applier = labeling.LFApplier(lfs=lfs)

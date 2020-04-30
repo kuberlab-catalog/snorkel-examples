@@ -9,8 +9,10 @@ def parse_args():
     parser.add_argument('--preds', required=True)
     parser.add_argument('--video', required=True)
     parser.add_argument('--output')
+    parser.add_argument('--label-output', default='labels.pkl')
     parser.add_argument('--index')
-    parser.add_argument('--mode', default='validate', choices=['validate', 'label'])
+    parser.add_argument('--label-threshold', type=float, default=0.85)
+    parser.add_argument('--mode', default='validate', choices=['validate', 'label', 'auto-label'])
 
     return parser.parse_args()
 
@@ -110,10 +112,10 @@ def main():
             while True:
                 key = cv2.waitKey(0)
                 if key in {ord('n'), ord('N')}:
-                    gt_preds[preds_i] = (preds[preds_i][0], -1)
+                    gt_preds[preds_i] = (preds[preds_i][0], 0)
                     break
                 elif key == 32:
-                    gt_preds[preds_i] = (preds[preds_i][0], 0)
+                    gt_preds[preds_i] = (preds[preds_i][0], 1)
                     break
                 elif key == 27:
                     end = True
@@ -122,19 +124,26 @@ def main():
             if end:
                 break
 
+        if args.mode == 'auto-label':
+            if is_action and probability >= args.label_threshold:
+                gt_preds[preds_i] = (preds[preds_i][0], 1)
+            else:
+                gt_preds[preds_i] = (preds[preds_i][0], 0)
+
         if args.output:
             video_writer.write(frame)
 
         if frame_count % 100 == 0:
             print(f'Processed {frame_count} frames.')
 
-    if args.mode == 'label':
-        with open('labels.pkl', 'wb') as f:
+    if args.mode in {'label', 'auto-label'}:
+        with open(args.label_output, 'wb') as f:
             pickle.dump(gt_preds, f)
-        print(f'Labels are saved to labels.pkl.')
+        print(f'Labels are saved to {args.label_output}.')
 
     if args.output:
         video_writer.release()
+        print(f'Video is saved to {args.output}.')
     cv2.destroyAllWindows()
     vc.release()
 

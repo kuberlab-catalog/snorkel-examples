@@ -35,9 +35,9 @@ class DetectronPose(object):
         fields = outputs['instances'].get_fields()
         for k, v in fields.items():
             if hasattr(v, 'tensor'):
-                fields[k] = v.tensor.detach().numpy()
+                fields[k] = v.tensor.detach().cpu().numpy()
             else:
-                fields[k] = v.detach().numpy()
+                fields[k] = v.detach().cpu().numpy()
 
         return fields
 

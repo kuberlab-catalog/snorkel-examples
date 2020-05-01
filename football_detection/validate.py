@@ -126,9 +126,9 @@ def main():
 
         if args.mode == 'auto-label':
             if is_action and probability >= args.label_threshold:
-                gt_preds[preds_i] = (preds[preds_i][0], 1)
-            else:
                 gt_preds[preds_i] = (preds[preds_i][0], 0)
+            else:
+                gt_preds[preds_i] = (preds[preds_i][0], -1)
 
         if args.output:
             video_writer.write(frame)

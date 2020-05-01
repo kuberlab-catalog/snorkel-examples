@@ -43,10 +43,11 @@ class DetectronPose(object):
 
     def draw_predictions(self, img_rgb, predictions):
         v = Visualizer(img_rgb, MetadataCatalog.get(self.cfg.DATASETS.TRAIN[0]))
+        labels = [str(p) for p in predictions.get('scores', [])]
         v.overlay_instances(
-            boxes=predictions['pred_boxes'],
-            labels=[str(p) for p in predictions['scores']],
-            keypoints=predictions['pred_keypoints'],
+            boxes=predictions.get('pred_boxes'),
+            labels=labels if labels else None,
+            keypoints=predictions.get('pred_keypoints'),
         )
         return v.get_output().get_image()
 
@@ -79,10 +80,11 @@ class DetectronPose(object):
         new_box = [box[0] - max_dim, box[1] - max_dim, box[2] + max_dim, box[3] + max_dim]
         return np.stack(new_box)
 
-    def intersects_with_expanded_legs(self, keypoints, target_box):
-        leg_boxes = self.get_leg_bounds(keypoints)
+    @classmethod
+    def intersects_with_expanded_legs(cls, keypoints, target_box):
+        leg_boxes = cls.get_leg_bounds(keypoints)
         for box in leg_boxes:
-            expanded_box = self.expand_box(box)
+            expanded_box = cls.expand_box(box)
             if utils.box_intersection(expanded_box, target_box) > 0:
                 return True
 
